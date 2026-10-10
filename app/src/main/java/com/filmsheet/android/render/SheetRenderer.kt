@@ -103,6 +103,9 @@ abstract class SheetRenderer(
 
     fun render(): ImageBitmap {
         val layout = computeLayout()
+        // 列数要记下来：片头引带的偏移依赖它，而它只有算完布局才知道
+        // （单张模式会把 config.columns 强制改成 1）。
+        currentCols = layout.cols
         rowPlan = buildRowPlan(layout.cols)
 
         val canvas = SheetCanvas(layout.totalW, layout.totalH, colors.canvasBG)
@@ -140,14 +143,25 @@ abstract class SheetRenderer(
 
     private fun countImagesInRow(row: Int): Int = rowPlan.countInRow(row)
 
-    /** 行首列。135 首行让出两个片头引带位；120 恒为 0（无打孔引带）。 */
-    protected open fun firstColumnFor(row: Int): Int =
+    /**
+     * 行首列。135 首行让出两个片头引带位；120 恒为 0（无打孔引带）。
+     *
+     * `cols > 1` 的守卫不可省：单列时 `2..<1` 为空，会导致什么都不渲染。
+     *
+     * 这里读的是**布局解析后**的列数而不是 `config.columns` —— 单张模式会
+     * 把列数强制成 1，而行计划与引带偏移都必须按解析后的值算。
+     */
+    protected open fun firstColumnFor(row: Int, cols: Int): Int =
         if (config.filmFormat == SheetConfig.FilmFormat.F120) {
             0
         } else {
-            (if (row == 0 && currentCols > 1) 2 else 0)
+            if (row == 0 && cols > 1) 2 else 0
         }
 
+    /** 便捷重载：按已解析的列数查询行首列。子类绘制时用这个。 */
+    protected fun firstColumnFor(row: Int): Int = firstColumnFor(row, currentCols)
+
+    /** 由 [render] 在算完布局后写入，供片头引带偏移查询。 */
     private var currentCols: Int = 1
 
     // MARK: - 信息块

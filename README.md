@@ -48,10 +48,15 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 | 配置模型 | `config/SheetConfig.kt` | 默认值、校验、清洗、信息字段 |
 | 布局算术 | `core/SheetLayout.kt` | 布局结果的数据类与派生量 |
 | 布局计算 | `core/LayoutCalculator.kt` | 画布尺寸、信息块高度、135/120 几何、包装图定位 |
+| 图像几何 | `core/ImageGeometry.kt` | 居中裁切、盖满裁切、转向判定、EXIF 角度 |
 | 片边文字 | `core/EdgeText.kt` | 品牌/型号映射、FNV-1a 批号 |
 | 随机数 | `core/SeededRNG.kt` | SplitMix64，片边印字的散布 |
 
-### 渲染层（依赖 Skia / Compose，需要 Android SDK）
+**几何为什么也放在 core**：裁切与转向算错了不会崩，只会让照片被裁歪一点 ——
+肉眼看出「不对劲」但极难定位。抽到这里就能被 JVM 单测逐像素验证，
+不必上 Robolectric。
+
+### 渲染与界面层（依赖 Skia / Compose，需要 Android SDK）
 
 | 模块 | 文件 | 说明 |
 |---|---|---|
@@ -60,16 +65,20 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 | 渲染器基类 | `render/SheetRenderer.kt` | 渲染顺序、信息块、包装图、水印、帧号 |
 | 135 | `render/Renderer135.kt` | 齿孔（KS/BH）、片边文字、照片放置 |
 | 120 | `render/Renderer120.kt` | 衬纸帧号、照片放置 |
-| 图像处理 | `render/ImageOps.kt` | 解码、EXIF 校正、反相、转向、居中裁切 |
+| 图像处理 | `render/ImageOps.kt` | 解码、EXIF 校正、反相、裁切（算术转发给 `ImageGeometry`） |
+| 照片流水线 | `data/PhotoPipeline.kt` | URI → 缩略图，逐帧容错 |
+| 编排 | `ui/SheetController.kt` | 渲染、保存、编码，全在后台线程 |
+| 界面 | `ui/SheetScreen.kt` | 选图 / 预览 / 参数 / 保存 |
 
-单测 **95 个全绿**（两条链路结果一致）。
+**主路已通**：选图 → 排版 → 保存到相册 → 系统分享。用系统 PhotoPicker，
+**不声明任何存储权限**。
+
+单测：纯 JVM **122 个全绿**；渲染层另有 instrumented test（需设备）。
 
 尚未实现：
 
-- 照片选择（PhotoPicker）、相册写入、分享
-- 界面（参数面板、预览、批量导出）
-- `ImageOps` 的单测（需要 `Bitmap`，JVM 上跑不动，得用 Robolectric
-  或 instrumented test）
+- 参数面板（缩略图宽度、间距、输出格式与质量、包装图位置、负片、水印）
+- 批量导出（`batchExportEnabled` 与单张模式）
 - 像素对照基准（Skia 与 CoreGraphics 抗锯齿、字体栅格化都不同，
   iOS 侧的 meanD 成绩不能套用，需要另建一套）
 
@@ -77,7 +86,7 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 
 ```bash
 ./scripts/bootstrap-toolchain.sh   # 首次：下载便携 JDK17 / kotlinc / Gradle / Android SDK
-./scripts/jvm-test.sh              # 95 个纯 JVM 单测，约 30 秒，不需要 SDK
+./scripts/jvm-test.sh              # 122 个纯 JVM 单测，约 30 秒，不需要 SDK
 ./scripts/gradlew-local.sh test    # 走 Gradle（需要 SDK）
 ./scripts/gradlew-local.sh assembleDebug   # 产物 app/build/outputs/apk/debug/
 ```

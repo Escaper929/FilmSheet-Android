@@ -55,6 +55,10 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
+    // Material3 与 foundation：Button / Scaffold / Image / 滚动等都在这两个里。
+    // compose-ui 只是绘图原语，不含任何现成控件。
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.foundation)
 
     // EXIF 方向校正。相机 JPEG 靠它转正 —— inSampleSize 不管这件事，
     // 少了它竖拍照片会躺着进拼版。
@@ -63,4 +67,10 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
+
+    // 渲染层的 instrumented test。它需要真实的 Bitmap / Canvas ——
+    // JVM 单测里 android.* 全返回假值（isReturnDefaultValues），
+    // 那种「通过」毫无意义。纯算术部分已抽进 core，由 JVM 单测覆盖。
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }

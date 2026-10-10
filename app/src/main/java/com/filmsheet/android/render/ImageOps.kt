@@ -3,11 +3,9 @@ package com.filmsheet.android.render
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.exifinterface.media.ExifInterface
 import com.filmsheet.android.config.SheetConfig
+import com.filmsheet.android.core.ImageGeometry
 import kotlin.math.max
 
 /**
@@ -31,22 +29,14 @@ object ImageOps {
 
     // MARK: - 期望宽高比
 
-    /**
-     * 桌面端 `image_pipeline._expected_135_ratio`。
-     *
-     * 比值 < 1 表示这张画幅是竖幅，> 1 是横幅。它同时驱动旋转与裁切，
-     * 所以每个子格式只此一个真相来源。
-     */
-    fun expected135Ratio(subFormat: String): Double = when (subFormat) {
-        "标准 36×24" -> 36.0 / 24.0
-        "半格 18×24" -> 18.0 / 24.0
-        "方形 24×24" -> 24.0 / 24.0
-        "XPan 65×24" -> 65.0 / 24.0
-        else -> 36.0 / 24.0
-    }
+    // 下面三个都是转发给 [ImageGeometry] —— 几何判定是纯算术，放在 core 才能被
+    // 纯 JVM 单测覆盖。留在这一层等于把同一份逻辑写两遍，而两份迟早会漂移。
 
-    /** 桌面端 `image_pipeline._is_portrait_120_format` —— 只有 645 是竖拍。 */
-    fun isPortrait120Format(subFormat: String): Boolean = subFormat == "645"
+    fun expected135Ratio(subFormat: String): Double =
+        ImageGeometry.expected135Ratio(subFormat)
+
+    fun isPortrait120Format(subFormat: String): Boolean =
+        ImageGeometry.isPortrait120Format(subFormat)
 
     fun ratio120(subFormat: String): Double =
         SheetConfig.filmFormatRatios[subFormat] ?: 1.0
@@ -106,18 +96,13 @@ object ImageOps {
         val degrees = runCatching {
             val exif = ExifInterface(bytes.inputStream())
             val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, -1)
-            when (orientation) {
-                ExifInterface.ORIENTATION_ROTATE_90 -> 90f
-                ExifInterface.ORIENTATION_ROTATE_180 -> 180f
-                ExifInterface.ORIENTATION_ROTATE_270 -> 270f
-                else -> 0f
-            }
-        }.getOrDefault(0f)
+            ImageGeometry.degreesForExifOrientation(orientation)
+        }.getOrDefault(0)
 
         // FLIP_* 那几个值涉及镜像，胶片排版不关心（相机不会产出镜像 JPEG），
-        // 所以只处理旋转。
-        if (degrees == 0f) return bmp
-        val m = Matrix().apply { postRotate(degrees) }
+        // 所以 degreesForExifOrientation 只认三个 ROTATE 值。
+        if (degrees == 0) return bmp
+        val m = Matrix().apply { postRotate(degrees.toFloat()) }
         return Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
     }
 
@@ -165,19 +150,9 @@ object ImageOps {
      */
     fun cropToRatio(bmp: Bitmap, ratio: Double, targetWidth: Int): Bitmap? {
         if (ratio <= 0.0 || targetWidth <= 0) return null
-        val iw = bmp.width.toDouble()
-        val ih = bmp.height.toDouble()
-        if (iw <= 0 || ih <= 0) return null
-
-        var cropW = iw
-        var cropH = ih
-        if (iw / ih > ratio) cropW = ih * ratio else cropH = iw / ratio
-        val originX = ((iw - cropW) / 2).toInt()
-        val originY = ((ih - cropH) / 2).toInt()
-
-        val srcW = cropW.toInt().coerceIn(1, bmp.width - originX)
-        val srcH = cropH.toInt().coerceIn(1, bmp.height - originY)
-        val cropped = Bitmap.createBitmap(bmp, originX, originY, srcW, srcH)
+        val rect = ImageGeometry.centerCropToRatio(bmp.width, bmp.height, ratio)
+            ?: return null
+        val cropped = Bitmap.createBitmap(bmp, rect.x, rect.y, rect.width, rect.height)
         val outH = max(1, (targetWidth / ratio).toInt())
         return Bitmap.createScaledBitmap(cropped, targetWidth, outH, true)
     }
@@ -189,22 +164,9 @@ object ImageOps {
      */
     fun coverResizeCrop(bmp: Bitmap, targetW: Int, targetH: Int): Bitmap {
         if (targetW <= 0 || targetH <= 0) return bmp
-        val iw = bmp.width.toDouble()
-        val ih = bmp.height.toDouble()
-        if (iw <= 0.0 || ih <= 0.0) return bmp
-
-        val scale = maxOf(targetW / iw, targetH / ih)
-        // 居中裁切后留在画面里的源区域
-        val visibleW = minOf(iw, targetW / scale)
-        val visibleH = minOf(ih, targetH / scale)
-        val originX = ((iw - visibleW) / 2).toInt()
-        val originY = ((ih - visibleH) / 2).toInt()
-
-        val srcW = visibleW.toInt().coerceIn(1, bmp.width - originX)
-        val srcH = visibleH.toInt().coerceIn(1, bmp.height - originY)
-        val src = Bitmap.createBitmap(
-            bmp, originX, originY, srcW, srcH,
-        )
+        val rect = ImageGeometry.coverCrop(bmp.width, bmp.height, targetW, targetH)
+            ?: return bmp
+        val src = Bitmap.createBitmap(bmp, rect.x, rect.y, rect.width, rect.height)
         return Bitmap.createScaledBitmap(src, targetW, targetH, true)
     }
 
@@ -230,16 +192,19 @@ object ImageOps {
      *
      * 转向由**子格式**决定，不是全局的「横构图」开关。
      */
-    private fun maybeRotate135(bmp: Bitmap, expectedRatio: Double, forceLandscape: Boolean): Bitmap {
-        if (!forceLandscape || expectedRatio == 1.0) return bmp
-        return if (expectedRatio > 1 && bmp.height > bmp.width) {
-            rotated(bmp, clockwise = true)
-        } else if (expectedRatio < 1 && bmp.width > bmp.height) {
-            rotated(bmp, clockwise = false)
-        } else {
-            bmp
+    private fun maybeRotate135(bmp: Bitmap, expectedRatio: Double, forceLandscape: Boolean): Bitmap =
+        applyRotation(
+            bmp,
+            ImageGeometry.rotation135(bmp.width, bmp.height, expectedRatio, forceLandscape),
+        )
+
+    /** 把转向判定喂给 [ImageGeometry] 的结论落到 Bitmap 上。 */
+    private fun applyRotation(bmp: Bitmap, rotation: ImageGeometry.Rotation): Bitmap =
+        when (rotation) {
+            ImageGeometry.Rotation.NONE -> bmp
+            ImageGeometry.Rotation.CW90 -> rotated(bmp, clockwise = true)
+            ImageGeometry.Rotation.CCW90 -> rotated(bmp, clockwise = false)
         }
-    }
 
     /** 桌面端 `image_pipeline.process_120_image`。 */
     fun process120(
@@ -253,18 +218,16 @@ object ImageOps {
 
         val ratio = ratio120(subFormat)
         // 原实现里 120 的两个分支都调 `rotate(-90, expand=True)`，
-        // 也就是顺时针 90 度。
-        if (isPortrait120Format(subFormat)) {
-            // 645：用户竖拍，横幅输入要转过来。
-            if (forceLandscape && img.width > img.height) {
-                img = rotated(img, clockwise = true)
-            }
-        } else {
-            // 66/67/68/69/612/617：用户横拍。
-            if (forceLandscape && img.height > img.width) {
-                img = rotated(img, clockwise = true)
-            }
-        }
+        // 也就是顺时针 90 度。645 是竖拍格式，转向条件与其余子格式相反。
+        img = applyRotation(
+            img,
+            ImageGeometry.rotation120(
+                srcW = img.width,
+                srcH = img.height,
+                isPortraitFormat = isPortrait120Format(subFormat),
+                forceLandscape = forceLandscape,
+            ),
+        )
         return cropToRatio(img, ratio, thumbWidth) ?: img
     }
 }

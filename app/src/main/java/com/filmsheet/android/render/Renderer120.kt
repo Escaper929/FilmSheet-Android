@@ -45,7 +45,7 @@ class Renderer120(
      * 共享的默认假设 135 的两格引带 —— 沿用它会让第 1 行重复第 0 行的照片。
      * 这正是 SPEC.md §8 第 2 条修掉的桌面端 bug。
      */
-    override fun firstColumnFor(@Suppress("UNUSED_PARAMETER") row: Int): Int = 0
+    override fun firstColumnFor(row: Int, cols: Int): Int = 0
 
     // MARK: - 衬纸上的帧号
 
