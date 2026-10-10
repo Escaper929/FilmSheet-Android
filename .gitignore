@@ -24,5 +24,14 @@ local.properties
 # GRADLE_USER_HOME 重定向到这里（C 盘空间不够），见 scripts/gradlew-local.sh
 /.gradle-home/
 
+# 模拟器 AVD（本机专属，见 Verification/README.md 的建立步骤）
+/.avd/
+
+# Kotlin 编译器的增量缓存
+/.kotlin/
+
+# 渲染对照的中间产物（参考图本身在 androidTest/assets/reference/，要入库）
+/build/verify/
+
 # 渲染对照产出的 PNG —— 用来肉眼比对 iOS / Android 的输出，不入库
 /renders/

@@ -52,6 +52,7 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 | 片边文字 | `core/EdgeText.kt` | 品牌/型号映射、FNV-1a 批号 |
 | 随机数 | `core/SeededRNG.kt` | SplitMix64，片边印字的散布 |
 | 输出命名 | `core/OutputNaming.kt` | 文件名派生、批量策略、重处理判定 |
+| 参照尺寸 | `core/ReferenceSizeTests.kt` | 7 个用例的画布尺寸与桌面端钉死 |
 
 **几何为什么也放在 core**：裁切与转向算错了不会崩，只会让照片被裁歪一点 ——
 肉眼看出「不对劲」但极难定位。抽到这里就能被 JVM 单测逐像素验证，
@@ -91,35 +92,52 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 > 教训：跨端移植时要去读对端的 ViewModel/Controller，不只是渲染层。
 > 交互策略不在 SPEC 里，也不在渲染器里，而在编排层。
 
-单测：纯 JVM **150 个全绿**；渲染层另有 instrumented test（需设备）。
+单测：纯 JVM **153 个全绿**；instrumented **12 个全过**（需模拟器）。
 
-尚未实现：
+---
 
-- 包装图位置的实时预览（小问题）
-- 像素对照基准（Skia 与 CoreGraphics 抗锯齿、字体栅格化都不同，
-  iOS 侧的 meanD 成绩不能套用，需要另建一套）
+## 验证：与桌面端逐像素对照
 
-### 构建与测试
+移植渲染引擎最大的风险不是编译不过，而是**能跑但画错了**。所以有一套
+固定的可重复对照流程，详见 [`Verification/README.md`](Verification/README.md)。
+
+```bash
+./Verification/regen-reference.sh                    # 用桌面端引擎重新生成参考图
+./scripts/jvm-test.sh                               # 布局算术对照（30 秒，不需设备）
+./scripts/gradlew-local.sh connectedDebugAndroidTest # 像素对照（需模拟器）
+```
+
+**最值得每天跑的是中间那条。** 画布尺寸由布局算术唯一决定，而布局算术
+覆盖 SPEC §5 的全部内容（边距、行数、片高、齿孔间距、帧宽高、信息块高度、
+画布高度公式）。任何一处漂移都会让尺寸变化，且它**不受重采样核与字体
+栅格化差异的影响**——比像素比对干净得多。当前 7 个用例全部逐字节吻合。
+
+像素比对的 meanD：135 是 2~8，120 是 2~16。两个 120 用例偏高是**因为
+本端修掉了桌面端的 120 丢图 bug**，与桌面端「一致」反而意味着复刻 bug。
+细节见 Verification/README.md。
+
+### 构建命令
 
 ```bash
 ./scripts/bootstrap-toolchain.sh   # 首次：下载便携 JDK17 / kotlinc / Gradle / Android SDK
-./scripts/jvm-test.sh              # 150 个纯 JVM 单测，约 30 秒，不需要 SDK
+./scripts/jvm-test.sh              # 153 个纯 JVM 单测，约 30 秒，不需要 SDK
 ./scripts/gradlew-local.sh test    # 走 Gradle（需要 SDK）
 ./scripts/gradlew-local.sh assembleDebug   # 产物 app/build/outputs/apk/debug/
 ```
 
-**为什么有两条链路**：`core/` 与 `config/` 根本不碰 `android.*` API
-（这正是把它们拆干净的理由），所以不必等 SDK 就位就能验证最内层的算术。
-`jvm-test.sh` 同时是道护栏——这两个源集里一旦出现 `import android.*`
-就编不过。
+---
+
+## 为什么有两条测试链路
+
+`core/` 与 `config/` 根本不碰 `android.*` API（这正是把它们拆干净的理由），
+所以不必等 SDK 就位就能验证最内层的算术——`jvm-test.sh` 直接用 kotlinc
+编译加 JUnitCore 跑，30 秒出结果。
+
+它同时是一道护栏：**这两个源集里一旦出现 `import android.*`，脚本立刻编不过。**
+
+需要图形 API 的部分（渲染层、UI）走 Gradle 的 instrumented test。
 
 日常开发直接用 Android Studio 打开本目录即可，不需要这些脚本。
-
-**为什么不用 `./gradlew test`**：Gradle 的 Android 插件要求 SDK 就位才能配置，
-而 `core/` 与 `config/` 根本不碰 `android.*` API —— 这正是把它们拆干净的
-理由。`jvm-test.sh` 直接用 kotlinc 编译加 JUnitCore 跑，几秒出结果。
-
-它同时是一道护栏：**一旦这两个源集里出现 `import android.*`，脚本立刻编不过**。
 
 ---
 
@@ -187,16 +205,7 @@ fun countInRow(row: Int): Int {
 ## 构建
 
 需要 JDK 17+ 与 Android SDK（compileSdk 35）。Windows 上直接用 Android Studio
-打开本目录即可，无需 Mac。
-
-```bash
-# 命令行构建与测试（需要 Android SDK）
-./gradlew test              # JVM 单元测试，不需要模拟器
-./gradlew assembleDebug     # 产物 app/build/outputs/apk/debug/
-
-# 或者纯 JVM 链路，不需要 SDK
-./scripts/jvm-test.sh
-```
+打开本目录即可，无需 Mac。命令行构建见上文「构建命令」。
 
 ---
 
