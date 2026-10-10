@@ -46,7 +46,10 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 | 物理常量 | `core/FilmEngine.kt` | 135 SMPTE + 120 ISO 732 常量表 |
 | 行计划 | `core/RowPlan.kt` | 行首列、行数、每行张数与起始帧号 |
 | 配置模型 | `config/SheetConfig.kt` | 默认值、校验、清洗、信息字段 |
-| 单测 | `test/.../RowPlanTests.kt` | 与 iOS 端 `RowPlanTests.swift` 一一对应 |
+| 布局算术 | `core/SheetLayout.kt` | 布局结果的数据类与派生量 |
+| 布局计算 | `core/LayoutCalculator.kt` | 画布尺寸、信息块高度、135/120 几何、包装图定位 |
+| 片边文字 | `core/EdgeText.kt` | 品牌/型号映射、FNV-1a 批号 |
+| 单测 | `test/.../*.kt` | 88 个，与 iOS 端测试一一对应 |
 
 尚未实现：
 
@@ -55,6 +58,43 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 - 照片选择、相册写入、分享
 - 像素对照基准（Skia 与 CoreGraphics 抗锯齿、字体栅格化都不同，
   iOS 侧的 meanD 成绩不能套用，需要另建一套）
+
+### 跑测试
+
+```bash
+./scripts/bootstrap-toolchain.sh   # 首次：下载便携 JDK17 + kotlinc + JUnit
+./scripts/jvm-test.sh              # 88 个纯 JVM 单测，约 30 秒
+```
+
+**为什么不用 `./gradlew test`**：Gradle 的 Android 插件要求 SDK 就位才能配置，
+而 `core/` 与 `config/` 根本不碰 `android.*` API —— 这正是把它们拆干净的
+理由。`jvm-test.sh` 直接用 kotlinc 编译加 JUnitCore 跑，几秒出结果。
+
+它同时是一道护栏：**一旦这两个源集里出现 `import android.*`，脚本立刻编不过**。
+绘制层落地后仍需回到 Gradle。
+
+---
+
+## 端间漂移：三处已修正
+
+跨端移植时发现的实际缺陷，都已同步进 `SPEC.md` 并在两端修复：
+
+1. **120 单列丢行**（iOS 与 Android 都有）。`Renderer120.computeLayout`
+   对 `cols == 1` 无条件设 `totalH = stripH`，但 120 单列时**每张照片各占
+   一行**，于是 6 张照片只留 1 行的高度，后 5 行被静默裁掉且不报错。
+   修法见 SPEC.md §5.3.1：压缩的触发条件是 `rows == 1` 而非 `cols == 1`。
+   135 不受影响 —— `cols == 1` 时行数恒为 1。
+
+2. **645 宽高比横竖颠倒**（仅 Android）。645 是唯一的竖幅 120 格式，
+   比值是 `56 / 41.5`；通用公式 `widthMM / 56` 会算出 0.741，
+   照片被按错误方向裁切。见 SPEC.md §3。
+
+3. **`calcCommonLayout` 吞掉调用方的零间距**（仅 Android 新实现）。
+   它内部重算 `spacing`，把单张模式传入的 0 覆盖掉了。已加
+   `spacingOverride` 参数。
+
+另修掉 iOS 端一条自己通不过的测试断言：电影胶卷关键词是 `cinema`，
+测试里却写成了 `cine`（不含 `cinema`）。
 
 ---
 
@@ -86,9 +126,12 @@ fun countInRow(row: Int): Int {
 打开本目录即可，无需 Mac。
 
 ```bash
-# 命令行构建与测试
+# 命令行构建与测试（需要 Android SDK）
 ./gradlew test              # JVM 单元测试，不需要模拟器
 ./gradlew assembleDebug     # 产物 app/build/outputs/apk/debug/
+
+# 或者纯 JVM 链路，不需要 SDK
+./scripts/jvm-test.sh
 ```
 
 ---

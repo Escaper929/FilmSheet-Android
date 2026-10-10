@@ -212,12 +212,25 @@ data class SheetConfig(
         /**
          * 画幅宽高比（W/H）— SPEC.md §3。
          *
-         * 135 的所有子格式共用 1.5；120 各子格式按真实 mm 宽除以固定 56mm 高。
+         * 135 的所有子格式共用 1.5。120 各子格式按真实 mm 宽除以固定 56mm 高 ——
+         * **645 是唯一的例外**：它是竖幅格式，SPEC.md §3 明确规定为
+         * `56 / 41.5` 而不是通用的 `41.5 / 56`。所以这里不能用一条公式
+         * 盖过整个表，645 必须单列。
+         *
+         * iOS 端 `SheetConfig.swift` 的 `filmFormatRatios` 是硬编码字面量表，
+         * 645 那条写的是 `56.0 / 41.5`，与此一致。
          */
         val filmFormatRatios: Map<String, Double> = buildMap {
             put("135", 1.5)
             for ((name, widthMM) in FilmEngine120.imageWidthsMM) {
-                put(name, widthMM / FilmEngine120.IMAGE_HEIGHT_MM)
+                put(
+                    name,
+                    if (name == "645") {
+                        FilmEngine120.IMAGE_HEIGHT_MM / widthMM
+                    } else {
+                        widthMM / FilmEngine120.IMAGE_HEIGHT_MM
+                    },
+                )
             }
         }
     }

@@ -38,7 +38,7 @@ object FilmEngine135 {
         PerfMode.BH -> PerfType.BH
         PerfMode.AUTO -> {
             val lower = shootingInfo.lowercase()
-            CINEMA_KEYWORDS.any { lower.contains(it) } ? PerfType.BH : PerfType.KS
+            if (CINEMA_KEYWORDS.any { lower.contains(it) }) PerfType.BH else PerfType.KS
         }
     }
 

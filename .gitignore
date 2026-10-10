@@ -11,3 +11,6 @@ local.properties
 
 # WorkBuddy agent workspace
 .workbuddy/
+
+# 便携工具链（JDK / kotlinc / JUnit），由 scripts/bootstrap-toolchain.sh 下载
+/.toolchain/
