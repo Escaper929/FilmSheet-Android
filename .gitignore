@@ -4,6 +4,8 @@
 /.idea/
 .DS_Store
 /build
+# 模块级的构建产物（AGP 输出在 app/build 而不是根 build）
+app/build/
 /captures
 .externalNativeBuild
 .cxx
@@ -12,5 +14,15 @@ local.properties
 # WorkBuddy agent workspace
 .workbuddy/
 
-# 便携工具链（JDK / kotlinc / JUnit），由 scripts/bootstrap-toolchain.sh 下载
+# 便携工具链（JDK / kotlinc / JUnit / Gradle），由 scripts/bootstrap-toolchain.sh 下载
 /.toolchain/
+
+# 便携 Android SDK（platform-35 + build-tools），由 scripts/bootstrap-toolchain.sh 下载。
+# 装在项目内是因为本机 C 盘只剩约 10 GB，装不下 SDK + Gradle 缓存。
+/.android-sdk/
+
+# GRADLE_USER_HOME 重定向到这里（C 盘空间不够），见 scripts/gradlew-local.sh
+/.gradle-home/
+
+# 渲染对照产出的 PNG —— 用来肉眼比对 iOS / Android 的输出，不入库
+/renders/

@@ -34,6 +34,18 @@ data class SheetConfig(
     val renderStyle: RenderStyle = RenderStyle.LIGHTBOX,
     val packSize: Int = 80,
 
+    /**
+     * 包装图的 content:// URI。
+     *
+     * 存 URI 而不是字节：一张包装图动辄几 MB，塞进配置对象会让每次参数
+     * 变更都复制一遍。渲染时按需解码，且只为取尺寸解到 2048px 上限
+     * （见 [com.filmsheet.android.core.LayoutCalculator.placePackImage]）。
+     *
+     * iOS 端对应的是 `packImageData: Data?`。两端都不把这个字段持久化到
+     * 偏好设置里 —— 它是用户每次会话要重新挑的文件。
+     */
+    val packImageUri: String? = null,
+
     // 处理
     val processingMode: ProcessingMode = ProcessingMode.POSITIVE,
     val perfMode: PerfMode = PerfMode.AUTO,

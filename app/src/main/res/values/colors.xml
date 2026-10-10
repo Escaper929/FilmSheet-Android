@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 冷启动到 Compose 接管之间显示的颜色，避免闪一下白/黑 -->
+    <color name="window_background">#FFF5F5F5</color>
+
+    <!-- 图标背景：胶片片的深棕，比纯黑更贴近实物 -->
+    <color name="ic_launcher_background">#FF3A322B</color>
+</resources>

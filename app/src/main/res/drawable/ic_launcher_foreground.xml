@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 图标前景：一段胶片条的剪影。108dp 画布，安全区是中央 72dp。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 胶片条本体 -->
+    <path
+        android:fillColor="#FF2B2622"
+        android:pathData="M22,38 h64 a3,3 0 0 1 3,3 v26 a3,3 0 0 1 -3,3 h-64 a3,3 0 0 1 -3,-3 v-26 a3,3 0 0 1 3,-3 z" />
+
+    <!-- 上排齿孔 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M26,42 h6 a2,2 0 0 1 2,2 v2 a2,2 0 0 1 -2,2 h-6 a2,2 0 0 1 -2,-2 v-2 a2,2 0 0 1 2,-2 z
+                          M42,42 h6 a2,2 0 0 1 2,2 v2 a2,2 0 0 1 -2,2 h-6 a2,2 0 0 1 -2,-2 v-2 a2,2 0 0 1 2,-2 z
+                          M58,42 h6 a2,2 0 0 1 2,2 v2 a2,2 0 0 1 -2,2 h-6 a2,2 0 0 1 -2,-2 v-2 a2,2 0 0 1 2,-2 z
+                          M74,42 h6 a2,2 0 0 1 2,2 v2 a2,2 0 0 1 -2,2 h-6 a2,2 0 0 1 -2,-2 v-2 a2,2 0 0 1 2,-2 z" />
+
+    <!-- 画面格 -->
+    <path
+        android:fillColor="#FFFF8C3C"
+        android:pathData="M25,54 h58 v12 h-58 z" />
+
+    <!-- 下排齿孔 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M26,62 h6 a2,2 0 0 1 2,2 v2 a2,2 0 0 1 -2,2 h-6 a2,2 0 0 1 -2,-2 v-2 a2,2 0 0 1 2,-2 z
+                          M42,62 h6 a2,2 0 0 1 2,2 v2 a2,2 0 0 1 -2,2 h-6 a2,2 0 0 1 -2,-2 v-2 a2,2 0 0 1 2,-2 z
+                          M58,62 h6 a2,2 0 0 1 2,2 v2 a2,2 0 0 1 -2,2 h-6 a2,2 0 0 1 -2,-2 v-2 a2,2 0 0 1 2,-2 z
+                          M74,62 h6 a2,2 0 0 1 2,2 v2 a2,2 0 0 1 -2,2 h-6 a2,2 0 0 1 -2,-2 v-2 a2,2 0 0 1 2,-2 z" />
+</vector>

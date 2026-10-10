@@ -310,15 +310,19 @@ CoreGraphics / Compose Canvas 本身对每条路径都做抗锯齿，**1 倍绘�
 
 ---
 
-## 8. 两处「有意分歧」
+## 8. 三处「有意分歧」
 
-与桌面端不同，这两处是**故意的**，不要「修正」：
+与桌面端不同，这三处是**故意的**，不要「修正」：
 
 1. **不做 4 倍超采样** —— 见 §6，CoreGraphics/Canvas 自带抗锯齿
 2. **修掉 120 多行丢图** —— 桌面端 `BaseRenderer._count_images_in_row`
    按 135 的引带算行首推进量，但 `Renderer120._place_images_in_row`
    从第 0 列放图，导致第 2 行重复第 1 行、最后几张永不出现。
    iOS/Android 两端都覆写 `firstColumn(forRow:)` 返回 0 修掉了。
+3. **坐标原点** —— §5 的全部数字都是**左上原点、y 向下**（桌面端 PIL 的口径）。
+   iOS/CoreGraphics 原点在左下、y 向上，所以 iOS 的 `Canvas` 初始化时翻转一次
+   CTM 来对齐。**Android/Compose/Skia 本身就是左上原点、y 向下，与布局空间
+   天然一致，所以不做任何翻转** —— 照抄 iOS 的翻转会把拼版上下颠倒。
 
 ---
 

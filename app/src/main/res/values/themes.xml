@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Compose 应用其实不需要 XML 主题，Material3 的配色全在代码里。
+      这里只声明一个空壳，是因为 manifest 的 android:theme 必须指向一个存在的
+      资源 —— 少一个就会在启动时崩。
+
+      窗口不显示标题栏：内容自己画标题。
+      windowBackground 用中性浅灰，避免冷启动到 Compose 接管之间闪白/闪黑。
+    -->
+    <style name="Theme.FilmSheet" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>

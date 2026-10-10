@@ -55,6 +55,11 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
+
+    // EXIF 方向校正。相机 JPEG 靠它转正 —— inSampleSize 不管这件事，
+    // 少了它竖拍照片会躺着进拼版。
+    implementation(libs.androidx.exifinterface)
+
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)

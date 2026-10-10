@@ -39,12 +39,40 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 echo "▸ 编译主源集…"
-JAVA_HOME="$JAVA_HOME_DIR" "$KOTLINC" \
-  -nowarn -d "$OUT/main" $PURE_MAIN 2>&1 | grep -v '^warning:' || true
+# 编译失败必须立刻退出并保留错误信息。之前这里挂着 `|| true`，
+# 编译器报再多的错也照样往下跑测试，最后只看到一堆莫名其妙的失败 ——
+# 那正是"光写不编译"能蒙混过关的原因。
+#
+# 两个坑：
+#  1. 不能写 `kotlinc ... 2>&1 | grep -v warning` —— 全部行都被滤掉时
+#     grep 返回 1，配合 set -o pipefail 会把**成功**的编译判成失败。
+#     所以先把输出落盘，再单独筛。
+#  2. set -e 下失败的命令会直接终止，`|| { ... }` 根本没机会执行。
+#     所以显式 set +e 捕获退出码，再自己处理。
+set +e
+
+compile() { # 日志文件 输出目录 其后是 kotlinc 的其余参数
+  local log="$1" outdir="$2"; shift 2
+  JAVA_HOME="$JAVA_HOME_DIR" "$KOTLINC" -nowarn -d "$outdir" "$@" > "$log" 2>&1
+}
+
+show_errors() { grep -v '^warning:' "$1" || true; }
+
+BUILD_MAIN="$OUT/main.compile.log"
+compile "$BUILD_MAIN" "$OUT/main" $PURE_MAIN
+rc=$?
+if [ $rc -ne 0 ]; then show_errors "$BUILD_MAIN"; exit $rc; fi
 
 echo "▸ 编译测试源集…"
-JAVA_HOME="$JAVA_HOME_DIR" "$KOTLINC" \
-  -nowarn -cp "$OUT/main:$CP" -d "$OUT/test" $PURE_TEST 2>&1 | grep -v '^warning:' || true
+BUILD_TEST="$OUT/test.compile.log"
+compile "$BUILD_TEST" "$OUT/test" -cp "$OUT/main:$CP" $PURE_TEST
+rc=$?
+if [ $rc -ne 0 ]; then show_errors "$BUILD_TEST"; exit $rc; fi
+
+set -e
+# 只剩 warning 时也让人看见，但不因此判定失败
+show_errors "$BUILD_MAIN" | grep -v '^$' || true
+show_errors "$BUILD_TEST" | grep -v '^$' || true
 
 # 找出所有以 Tests / Test 结尾的类，含 Kotlin 内部类（Foo$Bar）。
 CLASSES=$(cd "$OUT/test" && find . -name '*Test.class' -o -name '*Tests.class' \

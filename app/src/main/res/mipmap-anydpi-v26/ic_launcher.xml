@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      自适应图标：API 26+ 用矢量前景 + 纯色背景，不需要提供多套 PNG 密度。
+      minSdk 24 上 API 25 及更早会回退到 mipmap-anydpi-v26 之外的
+      传统图标 —— 靠 drawable/ic_launcher_fallback.xml 兜住。
+    -->
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

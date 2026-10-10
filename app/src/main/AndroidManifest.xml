@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Android 端与 iOS 端的一个关键差别：iOS 15.1+ 起可以用系统 PhotoPicker，
+      Android 13（API 33）起也有 system Photo Picker，且**不需要任何权限**。
+      选它而不是 ACTION_PICK / ACTION_OPEN_DOCUMENT 的理由与 iOS 端一致 ——
+      不索取相册权限是隐私上的正确做法，也是上架 Google Play 的硬要求。
+      minSdk 24 上这些 API 不存在，所以要按版本分支（见 ImagePickerSource.kt）。
+    -->
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.FilmSheet">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.FilmSheet">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          PhotoPicker 在 API 30 及以下是辅助模块的一部分，由 androidx.activity
+          的 ActivityResultContracts 自动注册，无需在 manifest 里声明。
+        -->
+    </application>
+
+</manifest>

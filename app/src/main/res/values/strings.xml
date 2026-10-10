@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FilmSheet</string>
+
+    <!-- 参数面板 -->
+    <string name="param_thumb_width">缩略图宽度</string>
+    <string name="param_columns">列数</string>
+    <string name="param_spacing">间距</string>
+    <string name="param_film_format">片基</string>
+    <string name="param_sub_format">画幅</string>
+    <string name="param_render_style">风格</string>
+    <string name="param_processing_mode">处理</string>
+    <string name="param_output_format">输出格式</string>
+    <string name="param_quality">质量</string>
+
+    <!-- 信息字段 -->
+    <string name="info_roll">卷号</string>
+    <string name="info_camera">相机</string>
+    <string name="info_film">胶卷</string>
+    <string name="info_shot_date">拍摄日期</string>
+    <string name="info_dev_date">冲洗日期</string>
+    <string name="info_proc">冲洗方式</string>
+    <string name="info_lab">冲洗地点</string>
+    <string name="info_scanner">扫描仪</string>
+
+    <!-- 操作 -->
+    <string name="action_pick_photos">选择照片</string>
+    <string name="action_render">渲染</string>
+    <string name="action_save">保存到相册</string>
+    <string name="action_share">分享</string>
+    <string name="action_pack_image">包装图</string>
+    <string name="action_clear">清空</string>
+</resources>

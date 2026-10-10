@@ -39,7 +39,7 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 
 ## 当前进度
 
-已完成的部分都不依赖任何图形 API，可以直接跑 JVM 单测：
+### 纯 JVM 层（不碰 `android.*`，可用 kotlinc 直接跑）
 
 | 模块 | 文件 | 说明 |
 |---|---|---|
@@ -49,29 +49,67 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 | 布局算术 | `core/SheetLayout.kt` | 布局结果的数据类与派生量 |
 | 布局计算 | `core/LayoutCalculator.kt` | 画布尺寸、信息块高度、135/120 几何、包装图定位 |
 | 片边文字 | `core/EdgeText.kt` | 品牌/型号映射、FNV-1a 批号 |
-| 单测 | `test/.../*.kt` | 88 个，与 iOS 端测试一一对应 |
+| 随机数 | `core/SeededRNG.kt` | SplitMix64，片边印字的散布 |
+
+### 渲染层（依赖 Skia / Compose，需要 Android SDK）
+
+| 模块 | 文件 | 说明 |
+|---|---|---|
+| 调色板 | `render/Palette.kt` | 灯板正片 / 接触印相两套配色 |
+| 画布 | `render/SheetCanvas.kt` | 矩形、圆角、椭圆、多边形、文本、贴图 |
+| 渲染器基类 | `render/SheetRenderer.kt` | 渲染顺序、信息块、包装图、水印、帧号 |
+| 135 | `render/Renderer135.kt` | 齿孔（KS/BH）、片边文字、照片放置 |
+| 120 | `render/Renderer120.kt` | 衬纸帧号、照片放置 |
+| 图像处理 | `render/ImageOps.kt` | 解码、EXIF 校正、反相、转向、居中裁切 |
+
+单测 **95 个全绿**（两条链路结果一致）。
 
 尚未实现：
 
-- 图像解码与 EXIF 校正（`ImageOps` 等价物）
-- 绘制层（`Canvas` / `Renderer135` / `Renderer120` 等价物）
-- 照片选择、相册写入、分享
+- 照片选择（PhotoPicker）、相册写入、分享
+- 界面（参数面板、预览、批量导出）
+- `ImageOps` 的单测（需要 `Bitmap`，JVM 上跑不动，得用 Robolectric
+  或 instrumented test）
 - 像素对照基准（Skia 与 CoreGraphics 抗锯齿、字体栅格化都不同，
   iOS 侧的 meanD 成绩不能套用，需要另建一套）
 
-### 跑测试
+### 构建与测试
 
 ```bash
-./scripts/bootstrap-toolchain.sh   # 首次：下载便携 JDK17 + kotlinc + JUnit
-./scripts/jvm-test.sh              # 88 个纯 JVM 单测，约 30 秒
+./scripts/bootstrap-toolchain.sh   # 首次：下载便携 JDK17 / kotlinc / Gradle / Android SDK
+./scripts/jvm-test.sh              # 95 个纯 JVM 单测，约 30 秒，不需要 SDK
+./scripts/gradlew-local.sh test    # 走 Gradle（需要 SDK）
+./scripts/gradlew-local.sh assembleDebug   # 产物 app/build/outputs/apk/debug/
 ```
+
+**为什么有两条链路**：`core/` 与 `config/` 根本不碰 `android.*` API
+（这正是把它们拆干净的理由），所以不必等 SDK 就位就能验证最内层的算术。
+`jvm-test.sh` 同时是道护栏——这两个源集里一旦出现 `import android.*`
+就编不过。
+
+日常开发直接用 Android Studio 打开本目录即可，不需要这些脚本。
 
 **为什么不用 `./gradlew test`**：Gradle 的 Android 插件要求 SDK 就位才能配置，
 而 `core/` 与 `config/` 根本不碰 `android.*` API —— 这正是把它们拆干净的
 理由。`jvm-test.sh` 直接用 kotlinc 编译加 JUnitCore 跑，几秒出结果。
 
 它同时是一道护栏：**一旦这两个源集里出现 `import android.*`，脚本立刻编不过**。
-绘制层落地后仍需回到 Gradle。
+
+---
+
+## Android 端与另两端的三处有意分歧
+
+除 `SPEC.md` §8 已记录的两条外，Android 端还有一条**只在渲染层**的分歧：
+
+**不做 y 轴翻转。** iOS 端 `Canvas` 初始化时必须翻转 CTM，因为
+CoreGraphics 原点在**左下角**、y 向上，而排版数字全部从桌面端 PIL 的
+**左上原点**口径移植过来。翻转一次才让整份移植对得上。
+
+Compose / Skia 本身就是左上原点、y 向下，**画布空间与布局空间天然一致**
+—— 照抄 iOS 的翻转反而会把整张拼版上下颠倒。所以 `SheetCanvas` 不做任何
+坐标变换，`SheetLayout` 的数字可以直接用。
+
+另外两条是共有的：不做 4 倍超采样、修掉 120 多行丢图。
 
 ---
 
