@@ -18,9 +18,12 @@
 | 解码 | ImageIO | BitmapFactory + ExifInterface |
 | 渲染规格 | [`SPEC.md`](https://github.com/Escaper929/FilmSheet-Swift/blob/main/SPEC.md) | 同一份 |
 
-**`FilmSheet-Swift` 仓库的 `SPEC.md` 是唯一真相源。** 改任何常量、清洗规则或
-行推进逻辑之前先改那份文档，然后两端各自实现。不要在本仓库里维护第二份常量表 ——
-那正是两端排版会漂移的原因。
+**权威源是 `FilmSheet-Swift` 仓库里的 `SPEC.md`。** 本仓库根目录也放了一份副本
+（`SPEC.md`），方便离线查阅，但**不要在这里直接改** —— 改完记得同步回
+FilmSheet-Swift，否则两端会漂移。
+
+改任何常量、清洗规则或行推进逻辑的顺序：先改 FilmSheet-Swift 的 SPEC.md，
+推到 GitHub，再把副本同步到本仓库，然后两端各自改实现。
 
 ## 为什么不用 Kivy / Flutter
 
