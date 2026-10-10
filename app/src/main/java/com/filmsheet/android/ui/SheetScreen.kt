@@ -41,13 +41,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.filmsheet.android.config.SheetConfig
+import com.filmsheet.android.core.ReprocessRule
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
  * 主界面 — 结构对照 iOS 端 `ContentView`：来源区 / 预览区 / 操作栏。
- *
- * 参数面板与批量导出暂缺 —— 先把「选图 → 排版 → 保存」这条主路走通，
- * 因为它是检验整套渲染实现对不对的唯一途径。
  */
 @Composable
 fun SheetScreen(
@@ -61,20 +61,73 @@ fun SheetScreen(
     val controller = remember { SheetController(context) }
 
     var images by remember { mutableStateOf<List<ImageBitmap>>(emptyList()) }
+    var sourceUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var preview by remember { mutableStateOf<ImageBitmap?>(null) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
     var progress by remember { mutableStateOf(0f) }
+    var showParams by remember { mutableStateOf(false) }
 
-    fun renderInto(newConfig: SheetConfig, src: List<ImageBitmap>, then: () -> Unit = {}) {
+    // 防抖任务：拖滑块时每秒几十次变更，每次都渲染会把界面卡死。
+    // 新一次变更会取消上一次未完成的渲染 —— 这与 iOS 端
+    // `SheetViewModel.refreshPreview` 的 previewTask?.cancel() 同构。
+    var previewJob by remember { mutableStateOf<Job?>(null) }
+
+    fun schedulePreview(newConfig: SheetConfig, src: List<ImageBitmap>) {
+        if (src.isEmpty()) {
+            preview = null
+            return
+        }
+        previewJob?.cancel()
+        previewJob = scope.launch {
+            delay(SheetController.PREVIEW_DEBOUNCE_MS)
+            preview = controller.renderPreview(newConfig, src)
+        }
+    }
+
+    /** 完整渲染一张（保存前用），并把它交出去。 */
+    fun renderFull(newConfig: SheetConfig, src: List<ImageBitmap>, then: (ImageBitmap) -> Unit) {
         scope.launch {
             busy = true
-            status = "排版中…"
-            progress = 0f
-            preview = controller.render(newConfig, src)
+            status = "渲染中…"
+            val bitmap = controller.render(newConfig, src)
             busy = false
             status = ""
-            then()
+            if (bitmap != null) then(bitmap)
+        }
+    }
+
+    /**
+     * 应用配置变更。
+     *
+     * ## 为什么不能一律只重排预览
+     *
+     * `images` 里存的是**已经按配置处理过的缩略图**。而画幅、负片、
+     * 缩略图宽度这几个参数是在**预处理阶段**生效的（裁切 / 反相 / 缩放
+     * 都发生在解码之后），布局阶段改不了。
+     *
+     * 所以这三者一变，必须重新走一遍 PhotoPipeline，否则预览会拿旧画幅的
+     * 缩略图按新画幅排 —— 看着「排版变了」，其实照片本身还是错的。
+     */
+    fun applyConfig(newConfig: SheetConfig) {
+        onConfigChange(newConfig)
+        if (sourceUris.isEmpty()) return
+
+        if (!ReprocessRule.needsReprocess(config, newConfig)) {
+            schedulePreview(newConfig, images)
+            return
+        }
+        scope.launch {
+            busy = true
+            status = "重新处理照片…"
+            progress = 0f
+            val reprocessed = controller.loadPhotos(newConfig, sourceUris) { done, total ->
+                progress = done.toFloat() / total
+            }
+            images = reprocessed
+            busy = false
+            status = "已重新处理 ${reprocessed.size} 张"
+            schedulePreview(newConfig, reprocessed)
         }
     }
 
@@ -98,7 +151,7 @@ fun SheetScreen(
                 progress = done.toFloat() / total
             }
             images = loaded
-            preview = controller.render(config, loaded)
+            sourceUris = picked
             busy = false
             status = if (loaded.size == picked.size) {
                 "已载入 ${loaded.size} 张"
@@ -106,6 +159,7 @@ fun SheetScreen(
                 // 有照片读不出来 —— 说清楚比静默丢弃好
                 "已载入 ${loaded.size}/${picked.size} 张（部分无法读取）"
             }
+            schedulePreview(config, loaded)
         }
     }
 
@@ -118,9 +172,9 @@ fun SheetScreen(
                 status = "正在读取包装图…"
                 val pack = controller.loadPackImage(config, uri)
                 onConfigChange(config.copy(packImageUri = uri.toString()))
-                renderInto(config, images)
                 busy = false
                 status = if (pack != null) "包装图已设置" else "包装图读取失败"
+                if (pack != null) schedulePreview(config.copy(packImageUri = uri.toString()), images)
             }
         }
     }
@@ -152,6 +206,7 @@ fun SheetScreen(
                 if (images.isNotEmpty()) {
                     TextButton(onClick = {
                         images = emptyList()
+                        sourceUris = emptyList()
                         preview = null
                         status = ""
                     }) { Text("清空") }
@@ -211,10 +266,7 @@ fun SheetScreen(
             // 这些进参数面板，否则主屏会被滑块塞满。
             QuickParams(
                 config = config,
-                onChange = { newConfig ->
-                    onConfigChange(newConfig)
-                    if (images.isNotEmpty()) renderInto(newConfig, images)
-                },
+                onChange = ::applyConfig,
                 enabled = !busy,
             )
 
@@ -230,14 +282,18 @@ fun SheetScreen(
                     enabled = !busy,
                 ) { Text("包装图") }
 
+                OutlinedButton(onClick = { showParams = true }) { Text("参数") }
+
                 OutlinedButton(
-                    onClick = { renderInto(config, images) },
+                    onClick = { schedulePreview(config, images) },
                     enabled = !busy && images.isNotEmpty(),
                 ) { Text("重排") }
 
                 Button(
-                    onClick = { preview?.let(onSave) },
-                    enabled = !busy && preview != null,
+                    // 预览是 80px 的小图，保存必须**重新完整渲染** ——
+                    // 直接存预览等于给用户一张 80px 的废图
+                    onClick = { renderFull(config, images, onSave) },
+                    enabled = !busy && images.isNotEmpty(),
                     modifier = Modifier.weight(1f),
                 ) { Text("保存到相册") }
             }
@@ -253,6 +309,19 @@ fun SheetScreen(
                 )
             }
         }
+    }
+
+    if (showParams) {
+        ParameterSheet(
+            config = config,
+            onConfigChange = ::applyConfig,
+            onDismiss = { showParams = false },
+            onReset = {
+                onConfigChange(SheetConfig())
+                schedulePreview(SheetConfig(), images)
+                showParams = false
+            },
+        )
     }
 }
 

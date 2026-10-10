@@ -51,10 +51,16 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 | 图像几何 | `core/ImageGeometry.kt` | 居中裁切、盖满裁切、转向判定、EXIF 角度 |
 | 片边文字 | `core/EdgeText.kt` | 品牌/型号映射、FNV-1a 批号 |
 | 随机数 | `core/SeededRNG.kt` | SplitMix64，片边印字的散布 |
+| 输出命名 | `core/OutputNaming.kt` | 文件名派生、批量策略、重处理判定 |
 
 **几何为什么也放在 core**：裁切与转向算错了不会崩，只会让照片被裁歪一点 ——
 肉眼看出「不对劲」但极难定位。抽到这里就能被 JVM 单测逐像素验证，
 不必上 Robolectric。
+
+**重处理判定为什么也在 core**：界面里存的是**已处理好的缩略图**，
+而裁切/反相/转向/缩放都发生在预处理阶段，布局阶段改不了它们。
+漏判的后果很隐蔽 —— 预览看着「排版变了」，照片却是旧画幅裁的，
+要等导出才发现。见 `ReprocessRule`。
 
 ### 渲染与界面层（依赖 Skia / Compose，需要 Android SDK）
 
@@ -67,18 +73,29 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 | 120 | `render/Renderer120.kt` | 衬纸帧号、照片放置 |
 | 图像处理 | `render/ImageOps.kt` | 解码、EXIF 校正、反相、裁切（算术转发给 `ImageGeometry`） |
 | 照片流水线 | `data/PhotoPipeline.kt` | URI → 缩略图，逐帧容错 |
-| 编排 | `ui/SheetController.kt` | 渲染、保存、编码，全在后台线程 |
-| 界面 | `ui/SheetScreen.kt` | 选图 / 预览 / 参数 / 保存 |
+| 编排 | `ui/SheetController.kt` | 预览/完整渲染、编码、保存、批量导出 |
+| 主界面 | `ui/SheetScreen.kt` | 选图 / 预览 / 高频参数 / 保存 |
+| 参数面板 | `ui/ParameterSheet.kt` | 7 组参数，对齐 iOS 端 ParameterSheet |
 
 **主路已通**：选图 → 排版 → 保存到相册 → 系统分享。用系统 PhotoPicker，
 **不声明任何存储权限**。
 
-单测：纯 JVM **122 个全绿**；渲染层另有 instrumented test（需设备）。
+### 两条容易漏的交互规则
+
+1. **预览用 80px**。`thumb_width=1200` 时画布约 8000px 宽，拖滑块
+   每秒触发几十次变更，每次都完整渲染会把界面卡死。预览把 `thumbWidth`
+   压到 80（与桌面端预览一致），导出才按设定宽度渲染。
+2. **预览防抖 250ms**，新变更取消上一次未完成的渲染。与 iOS 端
+   `SheetViewModel.refreshPreview` 同构。
+
+> 教训：跨端移植时要去读对端的 ViewModel/Controller，不只是渲染层。
+> 交互策略不在 SPEC 里，也不在渲染器里，而在编排层。
+
+单测：纯 JVM **150 个全绿**；渲染层另有 instrumented test（需设备）。
 
 尚未实现：
 
-- 参数面板（缩略图宽度、间距、输出格式与质量、包装图位置、负片、水印）
-- 批量导出（`batchExportEnabled` 与单张模式）
+- 包装图位置的实时预览（小问题）
 - 像素对照基准（Skia 与 CoreGraphics 抗锯齿、字体栅格化都不同，
   iOS 侧的 meanD 成绩不能套用，需要另建一套）
 
@@ -86,7 +103,7 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 
 ```bash
 ./scripts/bootstrap-toolchain.sh   # 首次：下载便携 JDK17 / kotlinc / Gradle / Android SDK
-./scripts/jvm-test.sh              # 122 个纯 JVM 单测，约 30 秒，不需要 SDK
+./scripts/jvm-test.sh              # 150 个纯 JVM 单测，约 30 秒，不需要 SDK
 ./scripts/gradlew-local.sh test    # 走 Gradle（需要 SDK）
 ./scripts/gradlew-local.sh assembleDebug   # 产物 app/build/outputs/apk/debug/
 ```

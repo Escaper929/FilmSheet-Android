@@ -207,6 +207,16 @@ data class SheetConfig(
             listOf(InfoKey.SHOOT_DATE, InfoKey.DEV_DATE, null),
             listOf(InfoKey.PROC, InfoKey.LAB, InfoKey.SCANNER),
         )
+
+        /**
+         * 按版面顺序（从上到下、从左到右）列出全部字段。
+         *
+         * 参数面板要按这个顺序排 —— 用户填「卷号」时得看到「相机」在它下面。
+         * 用 [InfoKey.entries] 的话两者**目前**恰好一致，但那是巧合：
+         * 有人调整枚举顺序而忘了这里，UI 与成片的顺序就会悄悄错位。
+         */
+        fun keysInLayoutOrder(): List<InfoKey> =
+            rows.flatten().filterNotNull()
     }
 
     companion object {

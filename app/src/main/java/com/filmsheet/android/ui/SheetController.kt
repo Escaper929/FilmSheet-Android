@@ -7,6 +7,8 @@ import android.net.Uri
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import com.filmsheet.android.config.SheetConfig
+import com.filmsheet.android.core.BatchPlan
+import com.filmsheet.android.core.OutputNaming
 import com.filmsheet.android.data.PhotoPipeline
 import com.filmsheet.android.render.Renderer120
 import com.filmsheet.android.render.Renderer135
@@ -27,18 +29,47 @@ import java.io.ByteArrayOutputStream
 class SheetController(private val context: Context) {
 
     /**
-     * 渲染一张拼版。
+     * 渲染一张拼版 —— **按设定宽度完整渲染**，用于导出。
      *
-     * 与 iOS 端 `SheetRenderer.isPreview` 一样，预览与导出走**同一条**
-     * 渲染路径，只有图片列表不同 —— 分开写两套必然出现
+     * 预览走 [renderPreview]，那条路才是快的。两者共用同一套渲染器，
+     * 只有配置里的 `thumbWidth` 不同 —— 分开写两套必然出现
      * 「预览好看、导出不一样」。
      */
     suspend fun render(config: SheetConfig, images: List<ImageBitmap>): ImageBitmap? =
         withContext(Dispatchers.Default) {
             if (images.isEmpty()) return@withContext null
-            val renderer = rendererFor(config, images)
-            renderer.render()
+            rendererFor(config, images).render()
         }
+
+    /**
+     * 渲染预览 — `thumbWidth` 压到 [PREVIEW_THUMB_WIDTH]。
+     *
+     * ## 为什么预览不能按设定宽度渲染
+     *
+     * `thumb_width = 1200` 时画布约 8000px 宽、每帧还要做一次位图缩放。
+     * 拖动列数滑块时每秒触发几十次变更，每次都完整渲染会把界面卡死。
+     *
+     * 80px 沿用桌面端预览的取值：小到能塞进一帧的预算，又大到能看清
+     * 排版与色调 —— 而这正是预览要反馈的东西。
+     *
+     * 齿孔这类细节在 80px 下看不清，但预览本来就不该用来判断齿孔，
+     * 导出结果才是准的。
+     */
+    suspend fun renderPreview(
+        config: SheetConfig,
+        images: List<ImageBitmap>,
+    ): ImageBitmap? = render(config.copy(thumbWidth = PREVIEW_THUMB_WIDTH), images)
+
+    /**
+     * 防抖时长（毫秒）。
+     *
+     * 250ms 与 iOS 端 `refreshPreview` 一致：短到感觉不到延迟，
+     * 长到能把拖滑块时的连续变更合并成一次渲染。
+     */
+    companion object {
+        const val PREVIEW_THUMB_WIDTH = 80
+        const val PREVIEW_DEBOUNCE_MS = 250L
+    }
 
     /** 处理选中的 URI 列表。 */
     suspend fun loadPhotos(
@@ -93,35 +124,45 @@ class SheetController(private val context: Context) {
         }
     }
 
-    /** 写 PNG/JPEG 到相册。返回插入后的 Uri 或 null。 */
-    suspend fun saveToGallery(bitmap: ImageBitmap, config: SheetConfig): Uri? =
-        withContext(Dispatchers.IO) {
-            val bytes = encode(bitmap, config)
-            val resolver = context.contentResolver
-            val ext = if (config.outputFormat == SheetConfig.OutputFormat.PNG) "png" else "jpg"
-            val mime = "image/$ext"
-            val name = "FilmSheet-${System.currentTimeMillis()}.$ext"
+    /**
+     * 写 PNG/JPEG 到相册。返回插入后的 Uri 或 null。
+     *
+     * 文件名走 [OutputNaming] 从信息字段派生，而不是时间戳 ——
+     * 「Nikon F3_Portra 400」比「FilmSheet-1762...」在相册里好用得多。
+     */
+    suspend fun saveToGallery(
+        bitmap: ImageBitmap,
+        config: SheetConfig,
+        filename: String = OutputNaming.generate(null, config.info, config.outputFormat),
+    ): Uri? = withContext(Dispatchers.IO) {
+        val bytes = encode(bitmap, config)
+        val resolver = context.contentResolver
+        val ext = OutputNaming.extFor(config.outputFormat)
+        val mime = "image/$ext"
 
-            val values = android.content.ContentValues().apply {
-                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, name)
-                put(android.provider.MediaStore.Images.Media.MIME_TYPE, mime)
-                // 不写 RELATIVE_PATH 的话图会落在相册根目录，容易被系统清理
-                put(
-                    android.provider.MediaStore.Images.Media.RELATIVE_PATH,
-                    "Pictures/FilmSheet",
-                )
-                put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
-            }
-            val uri = resolver.insert(
-                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values,
-            ) ?: return@withContext null
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, filename)
+            put(android.provider.MediaStore.Images.Media.MIME_TYPE, mime)
+            // 不写 RELATIVE_PATH 的话图会落在相册根目录，容易被系统清理
+            put(
+                android.provider.MediaStore.Images.Media.RELATIVE_PATH,
+                "Pictures/FilmSheet",
+            )
+            // IS_PENDING 让相册在写完前先藏起这张图 —— 否则用户会看到
+            // 一张半张的图
+            put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(
+            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values,
+        ) ?: return@withContext null
 
-            runCatching {
-                resolver.openOutputStream(uri)?.use { it.write(bytes) }
-            }.onFailure {
-                resolver.delete(uri, null, null)
-                return@withContext null
-            }
+        runCatching {
+            resolver.openOutputStream(uri)?.use { it.write(bytes) }
+        }.onFailure {
+            // 写失败必须删掉占位，否则相册里留一张 0 字节的坏图
+            resolver.delete(uri, null, null)
+            return@withContext null
+        }
 
             // IS_PENDING 必须在写完后清掉，否则相册里看不到
             resolver.update(
@@ -133,6 +174,73 @@ class SheetController(private val context: Context) {
             )
             uri
         }
+
+    // MARK: - 批量导出
+
+    /** 批量导出的结果汇总。 */
+    data class BatchResult(
+        val saved: List<Uri> = emptyList(),
+        val failures: List<String> = emptyList(),
+    ) {
+        val allSucceeded: Boolean get() = failures.isEmpty()
+    }
+
+    /**
+     * 按 [BatchPlan] 逐张渲染并保存。
+     *
+     * ## 为什么单张失败不中断整批
+     *
+     * 200 张照片里坏掉一张（文件被删、格式不支持），整批就白等了 ——
+     * 前面的渲染都作废。所以失败只记下来，最后一并报。
+     *
+     * @param onProgress 已完成数 / 总数
+     */
+    suspend fun exportBatch(
+        config: SheetConfig,
+        images: List<ImageBitmap>,
+        explicitName: String? = null,
+        onProgress: (Int, Int) -> Unit = { _, _ -> },
+    ): BatchResult = withContext(Dispatchers.IO) {
+        val plan = BatchPlan.plan(config, images.size, explicitName)
+        if (plan.isEmpty()) return@withContext BatchResult()
+
+        val saved = mutableListOf<Uri>()
+        val failures = mutableListOf<String>()
+
+        for ((i, item) in plan.withIndex()) {
+            onProgress(i + 1, plan.size)
+
+            // 单张模式只喂一张照片；整张导出喂全部
+            val subset = if (item.singleIndex != null) {
+                listOf(images[BatchPlan.photoIndexFor(images.size, item.singleIndex)])
+            } else {
+                images
+            }
+
+            val styleConfig = config.copy(
+                renderStyle = item.style,
+                singlePhotoMode = config.singlePhotoMode && item.singleIndex != null,
+            )
+
+            val bitmap = runCatching { rendererFor(styleConfig, subset).render() }
+                .getOrNull()
+            if (bitmap == null) {
+                failures += "${item.filename}：渲染失败"
+                continue
+            }
+
+            val uri = runCatching { saveToGallery(bitmap, config, item.filename) }
+                .getOrNull()
+            if (uri == null) {
+                failures += "${item.filename}：写入相册失败"
+            } else {
+                saved += uri
+            }
+        }
+
+        onProgress(plan.size, plan.size)
+        BatchResult(saved, failures)
+    }
 
     /** 读 URI 的显示名，用于填「相机」字段。 */
     fun displayNameOf(uri: Uri): String =
