@@ -91,6 +91,35 @@
 （SPEC.md §8 第 2 条）。**所以这里分数高才对** ——
 与桌面端「一致」意味着复刻一个 bug。
 
+### 空间分布（`--grid`）
+
+`./scripts/dump-renders.sh` 能把渲染结果取到 `build/renders/`，
+然后喂给 **iOS 端的分析脚本** —— 于是不必在 Mac 上跑模拟器，
+就能在 PC 上研究 Android 的输出：
+
+```bash
+# FilmSheet-Swift 仓库里
+"$PY" Verification/compare.py <桌面端参考图目录> \
+      /d/FilmSheet-Android/build/renders --grid
+```
+
+实测两处结果一致（`120_66`：PC 11.78 / 设备内 11.67，
+`135_light_info`：PC 2.74 / 设备内 2.71），微差只来自 luma 转换的实现细节。
+
+8×8 网格的三种形态各有含义：
+
+| 形态 | 含义 |
+|---|---|
+| 集中在**顶部** | 信息块与片边文字 —— 字体栅格化，属正常 |
+| **均匀**铺开 | 重采样核，属正常 |
+| 集中在**中部** | 几何画错了 —— 这是真 bug |
+
+实测 `135_light_info` 的第 6、7 行带是 **0.0**（空白边距，两端完全一致）；
+而 `120_66` 的第 5、6 行带是 34~57，其余 ≤ 3 —— 精确指向行 1、2。
+
+> 导出脚本走 logcat 传 Base64 而不是 adb pull，因为 instrumented 测试
+> 跑完**被测应用会被卸载**，它的 externalFilesDir 随之消失。
+
 ## 模拟器
 
 `scripts/bootstrap-toolchain.sh` 已经会装好模拟器、系统镜像与 AVD。
