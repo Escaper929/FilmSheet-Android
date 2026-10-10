@@ -97,17 +97,22 @@
 日常起停用：
 
 ```bash
-./scripts/start-emulator.sh          # 启动并等就绪（首次约 60 秒）
+./scripts/start-emulator.sh          # 启动并等就绪（首次约 70 秒）
 ./scripts/start-emulator.sh --stop   # 关掉
 ./scripts/gradlew-local.sh connectedDebugAndroidTest
 ```
 
 用的是 `aosp_atd` 镜像：它专为自动化测试优化，没有 Play 商店和多余的系统
 应用，启动快、镜像小。`-gpu swiftshader_indirect` 走软件渲染 —— 像素对照
-不需要 GPU 正确性，Skia 走 CPU 路径结果一样。
+不需要 GPU 正确性，Skia 走 CPU 路径一样。
 
 `ANDROID_AVD_HOME` 与 `ANDROID_EMULATOR_HOME` 都必须放 D 盘（C 盘不够），
 脚本里已经设好。
+
+> ⚠️ **在受管的环境里（CI、Agent 沙箱）自启动模拟器需要用后台任务托管**。
+> 脚本里的 `nohup` 未必能保住进程——某些执行器在命令返回时会清理整个进程组，
+> 模拟器会被一起带走，表现为「刚启动就 No connected devices」。那种环境下
+> 请把 emulator 命令作为独立的后台任务启动，再另起一条命令跑对照。
 
 ## 7 个用例覆盖什么
 

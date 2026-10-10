@@ -11,15 +11,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import com.filmsheet.android.config.SheetConfig
-import com.filmsheet.android.ui.SheetController
+import com.filmsheet.android.data.ConfigStore
 import com.filmsheet.android.ui.SheetScreen
-import kotlinx.coroutines.launch
 
 /**
  * 唯一 Activity — 对应 iOS 端的 `FilmSheetApp` + `ContentView`。
@@ -43,37 +40,29 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun FilmSheetApp() {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val controller = remember { SheetController(context) }
+    val store = remember { ConfigStore(context) }
 
-    // 配置提到这一层：保存时要用与渲染时**同一份**配置决定输出格式与质量。
-    // 放在 Screen 内部的话，保存那一刻就拿不到了。
-    var config by remember { mutableStateOf(SheetConfig()) }
-    var savedUri by remember { mutableStateOf<Uri?>(null) }
+    // 配置的唯一真相。启动时读一次，之后每次改动立刻写回偏好文件 ——
+    // 用户下次打开 App 看到的还是上次的设置。
+    var config by remember { mutableStateOf(store.load()) }
 
     SheetScreen(
         config = config,
-        onConfigChange = { config = it },
-        onSave = { bitmap: ImageBitmap ->
-            scope.launch {
-                val uri = controller.saveToGallery(bitmap, config)
-                savedUri = uri
-                if (uri != null) {
-                    // 存完直接弹系统分享，省得用户自己去相册翻找
-                    val mime = if (config.outputFormat == SheetConfig.OutputFormat.PNG) {
-                        "image/png"
-                    } else {
-                        "image/jpeg"
-                    }
-                    val send = Intent(Intent.ACTION_SEND).apply {
-                        type = mime
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    context.startActivity(Intent.createChooser(send, "分享拼版"))
-                }
-            }
+        onConfigChange = { newConfig ->
+            config = newConfig
+            store.save(newConfig)
         },
-        savedUri = savedUri,
+        shareLatest = { uri ->
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = mimeTypeOf(config.outputFormat)
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(send, "分享拼版"))
+        },
     )
 }
+
+/** MIME 类型由输出格式决定 —— JPG 与 PNG 的分享 intent 不一样。 */
+internal fun mimeTypeOf(format: SheetConfig.OutputFormat): String =
+    if (format == SheetConfig.OutputFormat.PNG) "image/png" else "image/jpeg"

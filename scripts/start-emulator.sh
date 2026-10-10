@@ -30,23 +30,34 @@ if [ "${1:-}" = "--stop" ]; then
   exit 0
 fi
 
-if "$ADB" devices | grep -q "emulator-.*	device"; then
-  echo "模拟器已在运行"
-  exit 0
+if "$ADB" devices 2>/dev/null | grep -q "emulator-.*[[:space:]]device$"; then
+  if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+    echo "模拟器已在运行"
+    exit 0
+  fi
 fi
 
 echo "▸ 启动 $AVD_NAME（无窗口）…"
 # -gpu swiftshader_indirect 是软件渲染，这台机器没有可用的硬件加速，
 # 而像素对照并不需要 GPU 正确性 —— Skia 走 CPU 路径结果是一样的。
-"$EMU" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim \
-  -gpu swiftshader_indirect -no-snapshot > "$ROOT/build/emulator.log" 2>&1 &
+#
+# 必须用 nohup 脱离当前 shell：非交互式 Bash 工具在命令返回时会清理整个
+# 进程组，模拟器会被一起带走，表现为「刚启动就 No connected devices」。
+nohup "$EMU" -avd "$AVD_NAME" -no-window -no-audio -no-boot-anim \
+  -gpu swiftshader_indirect -no-snapshot \
+  > "$ROOT/build/emulator.log" 2>&1 &
+disown 2>/dev/null || true
 
-echo "▸ 等待启动完成（首次约 60 秒）…"
-for i in $(seq 1 40); do
-  if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
-    echo "就绪。跑对照："
-    echo "  ./scripts/gradlew-local.sh connectedDebugAndroidTest"
-    exit 0
+echo "▸ 等待启动完成（首次约 70 秒）…"
+for i in $(seq 1 45); do
+  # 用 adb devices 而不是 `shell getprop` —— 后者在设备离线时也返回空串，
+  # 会被 `= 1` 的判断误判成已就绪。
+  if "$ADB" devices 2>/dev/null | grep -q "emulator-.*[[:space:]]device$"; then
+    if [ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+      echo "就绪。跑对照："
+      echo "  ./scripts/gradlew-local.sh connectedDebugAndroidTest"
+      exit 0
+    fi
   fi
   sleep 10
 done

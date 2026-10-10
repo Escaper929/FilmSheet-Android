@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.filmsheet.android.config.SheetConfig
+import com.filmsheet.android.core.BatchPlan
 import com.filmsheet.android.core.ReprocessRule
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -48,13 +49,16 @@ import kotlinx.coroutines.launch
 
 /**
  * 主界面 — 结构对照 iOS 端 `ContentView`：来源区 / 预览区 / 操作栏。
+ *
+ * 保存与批量导出都收在这一层，因为只有这里持有**照片列表** ——
+ * 编排类（[SheetController]）只负责怎么渲染一张。
  */
 @Composable
 fun SheetScreen(
     config: SheetConfig,
     onConfigChange: (SheetConfig) -> Unit,
-    onSave: (ImageBitmap) -> Unit,
-    savedUri: Uri?,
+    /** 把刚保存到相册的 Uri 交出去，通常用来弹分享。 */
+    shareLatest: (Uri) -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -67,6 +71,56 @@ fun SheetScreen(
     var status by remember { mutableStateOf("") }
     var progress by remember { mutableStateOf(0f) }
     var showParams by remember { mutableStateOf(false) }
+    var savedCount by remember { mutableStateOf(0) }
+
+    /** 完整渲染并存进相册。 */
+    fun saveOne(newConfig: SheetConfig, src: List<ImageBitmap>) {
+        scope.launch {
+            busy = true
+            status = "渲染中…"
+            val bitmap = controller.render(newConfig, src)
+            val uri = if (bitmap != null) {
+                controller.saveToGallery(bitmap, newConfig)
+            } else null
+            busy = false
+            status = when {
+                bitmap == null -> "渲染失败"
+                uri == null -> "写入相册失败"
+                else -> "已保存"
+            }
+            if (uri != null) {
+                savedCount++
+                shareLatest(uri)
+            }
+        }
+    }
+
+    /** 按 [com.filmsheet.android.core.BatchPlan] 导出全部。 */
+    fun exportAll(newConfig: SheetConfig, src: List<ImageBitmap>) {
+        val total = BatchPlan.outputCount(newConfig, src.size)
+        if (total <= 0) {
+            status = "没有可导出的内容"
+            return
+        }
+        scope.launch {
+            busy = true
+            progress = 0f
+            val result = controller.exportBatch(newConfig, src) { done, count ->
+                progress = done.toFloat() / count.coerceAtLeast(1)
+                status = "导出 $done/$count"
+            }
+            busy = false
+            progress = 0f
+            savedCount += result.saved.size
+            status = if (result.failures.isEmpty()) {
+                "已导出 ${result.saved.size} 张"
+            } else {
+                // 部分失败要说清楚，否则用户不知道少了什么
+                "已导出 ${result.saved.size}/${total} 张，${result.failures.size} 张失败"
+            }
+            result.saved.firstOrNull()?.let { shareLatest(it) }
+        }
+    }
 
     // 防抖任务：拖滑块时每秒几十次变更，每次都渲染会把界面卡死。
     // 新一次变更会取消上一次未完成的渲染 —— 这与 iOS 端
@@ -82,18 +136,6 @@ fun SheetScreen(
         previewJob = scope.launch {
             delay(SheetController.PREVIEW_DEBOUNCE_MS)
             preview = controller.renderPreview(newConfig, src)
-        }
-    }
-
-    /** 完整渲染一张（保存前用），并把它交出去。 */
-    fun renderFull(newConfig: SheetConfig, src: List<ImageBitmap>, then: (ImageBitmap) -> Unit) {
-        scope.launch {
-            busy = true
-            status = "渲染中…"
-            val bitmap = controller.render(newConfig, src)
-            busy = false
-            status = ""
-            if (bitmap != null) then(bitmap)
         }
     }
 
@@ -292,16 +334,40 @@ fun SheetScreen(
                 Button(
                     // 预览是 80px 的小图，保存必须**重新完整渲染** ——
                     // 直接存预览等于给用户一张 80px 的废图
-                    onClick = { renderFull(config, images, onSave) },
+                    onClick = { saveOne(config, images) },
                     enabled = !busy && images.isNotEmpty(),
                     modifier = Modifier.weight(1f),
-                ) { Text("保存到相册") }
+                ) { Text("保存") }
             }
 
-            if (savedUri != null) {
+            // 批量导出只在真的会出多张时才出现 —— 单张模式下「导出」与
+            // 「保存」是同一件事，摆两个按钮只会让人犹豫。
+            val batchTotal = BatchPlan.outputCount(config, images.size)
+            if (batchTotal > 1 && images.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { exportAll(config, images) },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("批量导出 $batchTotal 张（两种风格 / 单张展开）")
+                }
+            }
+
+            if (status.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "已保存到相册",
+                    status,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center,
+                )
+            }
+            if (savedCount > 0) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "本次已保存 $savedCount 张",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),

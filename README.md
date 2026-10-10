@@ -52,6 +52,7 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 | 片边文字 | `core/EdgeText.kt` | 品牌/型号映射、FNV-1a 批号 |
 | 随机数 | `core/SeededRNG.kt` | SplitMix64，片边印字的散布 |
 | 输出命名 | `core/OutputNaming.kt` | 文件名派生、批量策略、重处理判定 |
+| 配置编解码 | `core/ConfigCodec.kt` | 逐字段容错的存取，包装图不持久化 |
 | 参照尺寸 | `core/ReferenceSizeTests.kt` | 7 个用例的画布尺寸与桌面端钉死 |
 
 **几何为什么也放在 core**：裁切与转向算错了不会崩，只会让照片被裁歪一点 ——
@@ -74,12 +75,13 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 | 120 | `render/Renderer120.kt` | 衬纸帧号、照片放置 |
 | 图像处理 | `render/ImageOps.kt` | 解码、EXIF 校正、反相、裁切（算术转发给 `ImageGeometry`） |
 | 照片流水线 | `data/PhotoPipeline.kt` | URI → 缩略图，逐帧容错 |
+| 配置存储 | `data/ConfigStore.kt` | SharedPreferences 存取 |
 | 编排 | `ui/SheetController.kt` | 预览/完整渲染、编码、保存、批量导出 |
-| 主界面 | `ui/SheetScreen.kt` | 选图 / 预览 / 高频参数 / 保存 |
+| 主界面 | `ui/SheetScreen.kt` | 选图 / 预览 / 高频参数 / 保存 / 批量 |
 | 参数面板 | `ui/ParameterSheet.kt` | 7 组参数，对齐 iOS 端 ParameterSheet |
 
 **主路已通**：选图 → 排版 → 保存到相册 → 系统分享。用系统 PhotoPicker，
-**不声明任何存储权限**。
+**不声明任何存储权限**。参数每次改动立刻写回偏好文件，重开 App 还在。
 
 ### 两条容易漏的交互规则
 
@@ -92,7 +94,7 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 > 教训：跨端移植时要去读对端的 ViewModel/Controller，不只是渲染层。
 > 交互策略不在 SPEC 里，也不在渲染器里，而在编排层。
 
-单测：纯 JVM **153 个全绿**；instrumented **12 个全过**（需模拟器）。
+单测：纯 JVM **167 个全绿**；instrumented **19 个全过**（需模拟器）。
 
 ---
 
@@ -120,7 +122,7 @@ Android 端的价值在于：**开发环境全在 Windows**，且 APK 装一次�
 
 ```bash
 ./scripts/bootstrap-toolchain.sh   # 首次：下载便携 JDK17 / kotlinc / Gradle / Android SDK
-./scripts/jvm-test.sh              # 153 个纯 JVM 单测，约 30 秒，不需要 SDK
+./scripts/jvm-test.sh              # 167 个纯 JVM 单测，约 30 秒，不需要 SDK
 ./scripts/gradlew-local.sh test    # 走 Gradle（需要 SDK）
 ./scripts/gradlew-local.sh assembleDebug   # 产物 app/build/outputs/apk/debug/
 ```
