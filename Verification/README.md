@@ -93,20 +93,21 @@
 
 ## 模拟器
 
-```bash
-# 建 AVD（AVD_HOME 也要放 D 盘，C 盘不够）
-export ANDROID_AVD_HOME="$PWD/.avd"
-echo no | .android-sdk/cmdline-tools/latest/bin/avdmanager create avd \
-  -n fsverify -k "system-images;android-30;aosp_atd;x86_64" -d pixel_2
+`scripts/bootstrap-toolchain.sh` 已经会装好模拟器、系统镜像与 AVD。
+日常起停用：
 
-# 无窗口启动（自动化用）
-export ANDROID_EMULATOR_HOME="$PWD/.avd"
-.android-sdk/emulator/emulator.exe -avd fsverify \
-  -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
+```bash
+./scripts/start-emulator.sh          # 启动并等就绪（首次约 60 秒）
+./scripts/start-emulator.sh --stop   # 关掉
+./scripts/gradlew-local.sh connectedDebugAndroidTest
 ```
 
-用 `aosp_atd` 镜像：它专为自动化测试优化，没有 Play 商店和多余的系统应用，
-启动快、镜像小。
+用的是 `aosp_atd` 镜像：它专为自动化测试优化，没有 Play 商店和多余的系统
+应用，启动快、镜像小。`-gpu swiftshader_indirect` 走软件渲染 —— 像素对照
+不需要 GPU 正确性，Skia 走 CPU 路径结果一样。
+
+`ANDROID_AVD_HOME` 与 `ANDROID_EMULATOR_HOME` 都必须放 D 盘（C 盘不够），
+脚本里已经设好。
 
 ## 7 个用例覆盖什么
 

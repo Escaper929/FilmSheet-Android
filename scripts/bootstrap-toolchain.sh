@@ -70,6 +70,27 @@ if [ ! -d "$SDK/platforms/android-35" ]; then
   ANDROID_HOME="$SDK" ANDROID_SDK_ROOT="$SDK" \
     "$SDK/cmdline-tools/latest/bin/sdkmanager" \
       "platform-tools" "platforms;android-35" "build-tools;34.0.0" < /dev/null
+
+  # 模拟器 + 系统镜像：像素对照的 instrumented test 需要。
+  # 用 aosp_atd —— 它专为自动化测试优化，没有 Play 商店与多余系统应用，
+  # 启动快、镜像小。API 30 是 aosp_atd 提供 x86_64 的较新版本。
+  echo "▸ 安装模拟器与系统镜像（约 1 GB，几分钟）…"
+  JAVA_HOME="$(ls -d "$TC"/jdk-* | head -1)" \
+  ANDROID_HOME="$SDK" ANDROID_SDK_ROOT="$SDK" \
+    "$SDK/cmdline-tools/latest/bin/sdkmanager" \
+      "emulator" "system-images;android-30;aosp_atd;x86_64" < /dev/null
+fi
+
+# AVD 也放项目内（C 盘空间不够），并预先建好对照用的那个。
+export ANDROID_AVD_HOME="$ROOT/.avd"
+export ANDROID_EMULATOR_HOME="$ROOT/.avd"
+if [ ! -f "$ROOT/.avd/fsverify.ini" ] && [ -d "$SDK/emulator" ]; then
+  echo "▸ 创建对照用 AVD（fsverify）…"
+  mkdir -p "$ROOT/.avd"
+  echo no | JAVA_HOME="$(ls -d "$TC"/jdk-* | head -1)" \
+  ANDROID_HOME="$SDK" ANDROID_SDK_ROOT="$SDK" \
+    "$SDK/cmdline-tools/latest/bin/avdmanager" create avd \
+      -n fsverify -k "system-images;android-30;aosp_atd;x86_64" -d pixel_2
 fi
 
 printf 'sdk.dir=%s\n' "$(cygpath -m "$SDK" 2>/dev/null || echo "$SDK")" \
@@ -78,4 +99,5 @@ printf 'sdk.dir=%s\n' "$(cygpath -m "$SDK" 2>/dev/null || echo "$SDK")" \
 echo
 echo "完成。"
 echo "  纯 JVM 单测（不需要 SDK）  ./scripts/jvm-test.sh"
-echo "  完整构建（含渲染层）      ./scripts/gradlew-local.sh assembleDebug"
+echo "  完整构建                    ./scripts/gradlew-local.sh assembleDebug"
+echo "  像素对照（需先起模拟器）    见 Verification/README.md"
